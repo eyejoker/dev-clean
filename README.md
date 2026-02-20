@@ -34,11 +34,11 @@ chmod +x ~/.local/bin/dev-clean
 ## Usage
 
 ```bash
-# Preview what would be deleted (safe)
-dev-clean --dry-run
+# Preview what would be deleted (default, safe)
+dev-clean
 
 # Actually clean
-dev-clean
+dev-clean --run
 ```
 
 Example output:
@@ -93,7 +93,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.eyejoker.dev-clean.p
 
 ```bash
 # Run every Sunday at 3 AM
-(crontab -l 2>/dev/null; echo "0 3 * * 0 $HOME/.local/bin/dev-clean") | crontab -
+(crontab -l 2>/dev/null; echo "0 3 * * 0 $HOME/.local/bin/dev-clean --run") | crontab -
 ```
 
 ## Why

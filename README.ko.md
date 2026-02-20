@@ -34,11 +34,11 @@ chmod +x ~/.local/bin/dev-clean
 ## 사용법
 
 ```bash
-# 미리보기 (삭제하지 않음)
-dev-clean --dry-run
+# 미리보기 (기본값, 안전)
+dev-clean
 
 # 실제 정리
-dev-clean
+dev-clean --run
 ```
 
 출력 예시:
@@ -91,7 +91,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.eyejoker.dev-clean.p
 
 ```bash
 # 매주 일요일 오전 3시 실행
-(crontab -l 2>/dev/null; echo "0 3 * * 0 $HOME/.local/bin/dev-clean") | crontab -
+(crontab -l 2>/dev/null; echo "0 3 * * 0 $HOME/.local/bin/dev-clean --run") | crontab -
 ```
 
 ## 왜 만들었나

@@ -1,12 +1,13 @@
 #!/bin/bash
 # dev-clean: Clean LLM coding tool caches + dev build artifacts
 # https://github.com/eyejoker/dev-clean
-# Usage: dev-clean [--dry-run]
+# Usage: dev-clean [--run]
+#   Default is dry-run (safe preview). Pass --run to actually delete.
 
 set -uo pipefail
 
-DRY_RUN=false
-[[ "${1:-}" == "--dry-run" ]] && DRY_RUN=true
+DRY_RUN=true
+[[ "${1:-}" == "--run" ]] && DRY_RUN=false
 
 TOTAL_FREED=0
 IS_MACOS=false

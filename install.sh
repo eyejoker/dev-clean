@@ -56,6 +56,7 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   <key>ProgramArguments</key>
   <array>
     <string>${INSTALL_DIR}/${SCRIPT_NAME}</string>
+    <string>--run</string>
   </array>
   <key>StartCalendarInterval</key>
   <dict>
@@ -83,5 +84,5 @@ PLIST
 fi
 
 echo ""
-echo "Done! Run 'dev-clean --dry-run' to preview."
+echo "Done! Run 'dev-clean' to preview, 'dev-clean --run' to clean."
 echo ""
