@@ -1,0 +1,173 @@
+#!/bin/bash
+# dev-clean: Clean LLM coding tool caches + dev build artifacts
+# https://github.com/eyejoker/dev-clean
+# Usage: dev-clean [--dry-run]
+
+set -uo pipefail
+
+DRY_RUN=false
+[[ "${1:-}" == "--dry-run" ]] && DRY_RUN=true
+
+TOTAL_FREED=0
+IS_MACOS=false
+[[ "$(uname -s)" == "Darwin" ]] && IS_MACOS=true
+
+# --- timeout wrapper (macOS has no coreutils timeout by default) ---
+_timeout() {
+  local secs="$1"; shift
+  if command -v timeout &>/dev/null; then
+    timeout "$secs" "$@"
+  elif command -v gtimeout &>/dev/null; then
+    gtimeout "$secs" "$@"
+  else
+    "$@"
+  fi
+}
+
+# --- Dev project directories ---
+DEFAULT_DIRS=(
+  "$HOME/Developer"
+  "$HOME/Projects"
+  "$HOME/Documents/GitHub"
+  "$HOME/src"
+  "$HOME/repos"
+  "$HOME/code"
+)
+
+if [[ -n "${DEV_CLEAN_DIRS:-}" ]]; then
+  IFS=':' read -ra DEV_DIRS <<< "$DEV_CLEAN_DIRS"
+else
+  DEV_DIRS=("${DEFAULT_DIRS[@]}")
+fi
+
+# --- Helpers ---
+
+freed() {
+  local path="$1"
+  local label="$2"
+  if [[ ! -e "$path" ]]; then
+    return
+  fi
+  local size
+  size=$(du -sk "$path" 2>/dev/null | cut -f1)
+  if [[ "$size" -gt 0 ]]; then
+    local mb=$((size / 1024))
+    TOTAL_FREED=$((TOTAL_FREED + mb))
+    if $DRY_RUN; then
+      printf "  [DRY] %-45s %6s MB\n" "$label" "$mb"
+    else
+      rm -rf "$path" 2>/dev/null
+      printf "  [DEL] %-45s %6s MB\n" "$label" "$mb"
+    fi
+  fi
+}
+
+delete_old_files() {
+  local dir="$1"
+  local days="$2"
+  local label="$3"
+  if [[ ! -d "$dir" ]]; then
+    return
+  fi
+  local size
+  size=$(find "$dir" -mindepth 1 -maxdepth 1 -mtime +"$days" -exec du -sk {} + 2>/dev/null | awk '{s+=$1} END {print s+0}')
+  if [[ "$size" -gt 0 ]]; then
+    local mb=$((size / 1024))
+    TOTAL_FREED=$((TOTAL_FREED + mb))
+    if $DRY_RUN; then
+      printf "  [DRY] %-45s %6s MB (>%sd)\n" "$label" "$mb" "$days"
+    else
+      find "$dir" -mindepth 1 -maxdepth 1 -mtime +"$days" -exec rm -rf {} +
+      printf "  [DEL] %-45s %6s MB (>%sd)\n" "$label" "$mb" "$days"
+    fi
+  fi
+}
+
+scan_build_artifacts() {
+  local base_dir="$1"
+  [[ ! -d "$base_dir" ]] && return
+
+  # Rust target directories
+  while IFS= read -r dir; do
+    local label="${dir#"$base_dir"/}"
+    freed "$dir" "rust target: $label"
+  done < <(find "$base_dir" -maxdepth 5 -type d -name "target" \
+    -not -path "*/node_modules/*" -not -path "*/.next/*" \
+    \( -exec test -f "{}/CACHEDIR.TAG" \; -o -exec test -d "{}/debug/deps" \; -o -exec test -d "{}/release/deps" \; \) \
+    -print 2>/dev/null)
+
+  # Next.js build output
+  while IFS= read -r dir; do
+    local label="${dir#"$base_dir"/}"
+    freed "$dir" ".next: $label"
+  done < <(find "$base_dir" -name ".next" -type d -maxdepth 4 2>/dev/null)
+
+  # Turbo cache
+  while IFS= read -r dir; do
+    local label="${dir#"$base_dir"/}"
+    freed "$dir" ".turbo cache: $label"
+  done < <(find "$base_dir" -name ".turbo" -type d -maxdepth 3 -exec test -d "{}/cache" \; -print 2>/dev/null)
+}
+
+# =============================================================================
+
+echo ""
+echo "=== dev-clean ==="
+$DRY_RUN && echo "(dry-run mode — nothing will be deleted)"
+echo ""
+
+# --- Claude Code ---
+echo "[Claude Code]"
+delete_old_files "$HOME/.claude/debug" 1 "debug logs (1d+)"
+delete_old_files "$HOME/.claude/file-history" 14 "file-history (14d+)"
+delete_old_files "$HOME/.claude/projects" 14 "projects (14d+)"
+
+# --- Codex ---
+echo "[Codex]"
+delete_old_files "$HOME/.codex/sessions" 14 "sessions (14d+)"
+delete_old_files "$HOME/.codex/archived_sessions" 14 "archived_sessions (14d+)"
+delete_old_files "$HOME/.codex/log" 7 "logs (7d+)"
+freed "$HOME/.codex/worktrees" "worktrees"
+
+# --- Package managers ---
+echo "[Package Managers]"
+freed "$HOME/.npm/_cacache" "npm cache"
+freed "$HOME/.npm/_npx" "npx cache"
+freed "$HOME/.cache/uv" "uv (Python) cache"
+freed "$HOME/.bun/install/cache" "bun install cache"
+if ! $DRY_RUN; then
+  command -v pnpm &>/dev/null && _timeout 120 pnpm store prune 2>/dev/null && printf "  [RUN] %-45s done\n" "pnpm store prune"
+  command -v conda &>/dev/null && _timeout 120 conda clean --all -y 2>/dev/null | tail -1 && printf "  [RUN] %-45s done\n" "conda clean"
+  command -v brew &>/dev/null && _timeout 120 brew cleanup 2>/dev/null && printf "  [RUN] %-45s done\n" "brew cleanup"
+else
+  command -v pnpm &>/dev/null && printf "  [DRY] %-45s (prune unused)\n" "pnpm store prune"
+  command -v conda &>/dev/null && printf "  [DRY] %-45s (tarballs+cache)\n" "conda clean --all"
+  command -v brew &>/dev/null && printf "  [DRY] %-45s (old versions)\n" "brew cleanup"
+fi
+
+# --- Build artifacts (scan all dev directories) ---
+echo "[Build Artifacts]"
+for dev_dir in "${DEV_DIRS[@]}"; do
+  scan_build_artifacts "$dev_dir"
+done
+
+# --- Misc dev caches ---
+echo "[Misc]"
+freed "$HOME/.cache/puppeteer" "puppeteer browsers"
+freed "$HOME/.cursor/worktrees" "cursor worktrees"
+freed "$HOME/.local/share/opencode" "opencode data"
+freed "$HOME/.cache/opencode" "opencode cache"
+
+# macOS-only
+if $IS_MACOS; then
+  freed "$HOME/Library/Caches/ms-playwright" "playwright browsers"
+  freed "$HOME/Library/Developer/Xcode/DerivedData" "Xcode DerivedData"
+  freed "$HOME/Library/Developer/Xcode/Archives" "Xcode Archives"
+  freed "$HOME/Library/Developer/CoreSimulator/Caches" "iOS Simulator caches"
+else
+  freed "$HOME/.cache/ms-playwright" "playwright browsers"
+fi
+
+echo ""
+echo "=== Total: ${TOTAL_FREED} MB ==="
+echo ""
