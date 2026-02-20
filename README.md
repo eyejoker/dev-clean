@@ -83,8 +83,22 @@ Override with the `DEV_CLEAN_DIRS` environment variable (colon-separated):
 
 ```bash
 export DEV_CLEAN_DIRS="$HOME/work:$HOME/personal"
-dev-clean --dry-run
+dev-clean
 ```
+
+### Whitelist
+
+Protect specific paths from cleanup by adding them to `~/.config/dev-clean/whitelist`:
+
+```
+# Keep this project's build output
+~/Documents/GitHub/my-app/apps/web/.next
+
+# Preserve Xcode DerivedData
+~/Library/Developer/Xcode/DerivedData
+```
+
+Whitelisted paths show as `[SKP]` in the output.
 
 ## Scheduling
 

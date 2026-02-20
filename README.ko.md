@@ -83,8 +83,22 @@ dev-clean uninstall
 
 ```bash
 export DEV_CLEAN_DIRS="$HOME/work:$HOME/personal"
-dev-clean --dry-run
+dev-clean
 ```
+
+### 화이트리스트
+
+특정 경로를 정리에서 제외하려면 `~/.config/dev-clean/whitelist`에 추가:
+
+```
+# 이 프로젝트의 빌드 결과물 보존
+~/Documents/GitHub/my-app/apps/web/.next
+
+# Xcode DerivedData 보존
+~/Library/Developer/Xcode/DerivedData
+```
+
+화이트리스트된 경로는 출력에서 `[SKP]`로 표시됩니다.
 
 ## 스케줄링
 

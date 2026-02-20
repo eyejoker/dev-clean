@@ -4,9 +4,32 @@
 
 set -uo pipefail
 
-VERSION="1.0.0"
+VERSION="1.1.0"
 PLIST_LABEL="com.eyejoker.dev-clean"
 PLIST_FILE="$HOME/Library/LaunchAgents/${PLIST_LABEL}.plist"
+WHITELIST_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/dev-clean/whitelist"
+
+# --- Colors (disabled when not a terminal) ---
+if [[ -t 1 ]]; then
+  C_GREEN='\033[0;32m'
+  C_YELLOW='\033[0;33m'
+  C_BLUE='\033[0;34m'
+  C_GRAY='\033[0;90m'
+  C_BOLD='\033[1m'
+  C_RESET='\033[0m'
+else
+  C_GREEN='' C_YELLOW='' C_BLUE='' C_GRAY='' C_BOLD='' C_RESET=''
+fi
+
+# --- Human-readable size ---
+format_size() {
+  local mb="$1"
+  if [[ "$mb" -ge 1024 ]]; then
+    printf "%.1f GB" "$(echo "$mb" | awk '{printf "%.1f", $1/1024}')"
+  else
+    printf "%s MB" "$mb"
+  fi
+}
 
 show_help() {
   cat <<'HELP'
@@ -22,31 +45,42 @@ Commands:
 Environment:
   DEV_CLEAN_DIRS  Colon-separated project directories to scan
                   (default: ~/Developer:~/Projects:~/Documents/GitHub:~/src:~/repos:~/code)
+
+Whitelist:
+  Add paths to exclude (one per line, # comments allowed):
+    ~/.config/dev-clean/whitelist
 HELP
   exit 0
 }
 
 do_uninstall() {
   echo ""
-  echo "=== Uninstalling dev-clean ==="
+  echo -e "${C_BOLD}=== Uninstalling dev-clean ===${C_RESET}"
   echo ""
 
   local script="$HOME/.local/bin/dev-clean"
   if [[ -f "$script" ]]; then
     rm -f "$script"
-    echo "Removed $script"
+    echo -e "  ${C_GREEN}✓${C_RESET} Removed $script"
   fi
 
   if [[ "$(uname -s)" == "Darwin" ]] && [[ -f "$PLIST_FILE" ]]; then
     launchctl bootout "gui/$(id -u)" "$PLIST_FILE" 2>/dev/null || true
     rm -f "$PLIST_FILE"
-    echo "Removed launchd schedule"
+    echo -e "  ${C_GREEN}✓${C_RESET} Removed launchd schedule"
   fi
 
   local data_dir="$HOME/.local/share/dev-clean"
   if [[ -d "$data_dir" ]]; then
     rm -rf "$data_dir"
-    echo "Removed $data_dir"
+    echo -e "  ${C_GREEN}✓${C_RESET} Removed $data_dir"
+  fi
+
+  local config_dir
+  config_dir="$(dirname "$WHITELIST_FILE")"
+  if [[ -d "$config_dir" ]]; then
+    rm -rf "$config_dir"
+    echo -e "  ${C_GREEN}✓${C_RESET} Removed $config_dir"
   fi
 
   echo ""
@@ -67,6 +101,32 @@ DRY_RUN=true
 TOTAL_FREED=0
 IS_MACOS=false
 [[ "$(uname -s)" == "Darwin" ]] && IS_MACOS=true
+
+# --- Whitelist ---
+WHITELIST=()
+if [[ -f "$WHITELIST_FILE" ]]; then
+  while IFS= read -r line; do
+    line="${line%%#*}"                   # strip comments
+    line="${line#"${line%%[![:space:]]*}"}"  # trim leading
+    line="${line%"${line##*[![:space:]]}"}"  # trim trailing
+    [[ -z "$line" ]] && continue
+    # expand ~ and $HOME
+    line="${line/#\~/$HOME}"
+    line="${line//\$HOME/$HOME}"
+    WHITELIST+=("$line")
+  done < "$WHITELIST_FILE"
+fi
+
+is_whitelisted() {
+  local path="$1"
+  for pattern in "${WHITELIST[@]+"${WHITELIST[@]}"}"; do
+    # exact match or parent match
+    if [[ "$path" == "$pattern" || "$path" == "$pattern"/* ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
 
 # --- timeout wrapper (macOS has no coreutils timeout by default) ---
 _timeout() {
@@ -101,19 +161,25 @@ fi
 freed() {
   local path="$1"
   local label="$2"
-  if [[ ! -e "$path" ]]; then
+  [[ ! -e "$path" ]] && return
+
+  if is_whitelisted "$path"; then
+    printf "  ${C_GRAY}[SKP] %-45s whitelisted${C_RESET}\n" "$label"
     return
   fi
+
   local size
   size=$(du -sk "$path" 2>/dev/null | cut -f1)
   if [[ "$size" -gt 0 ]]; then
     local mb=$((size / 1024))
     TOTAL_FREED=$((TOTAL_FREED + mb))
+    local human
+    human=$(format_size "$mb")
     if $DRY_RUN; then
-      printf "  [DRY] %-45s %6s MB\n" "$label" "$mb"
+      printf "  ${C_YELLOW}[DRY]${C_RESET} %-45s %10s\n" "$label" "$human"
     else
       rm -rf "$path" 2>/dev/null
-      printf "  [DEL] %-45s %6s MB\n" "$label" "$mb"
+      printf "  ${C_GREEN}[DEL]${C_RESET} %-45s %10s\n" "$label" "$human"
     fi
   fi
 }
@@ -122,19 +188,25 @@ delete_old_files() {
   local dir="$1"
   local days="$2"
   local label="$3"
-  if [[ ! -d "$dir" ]]; then
+  [[ ! -d "$dir" ]] && return
+
+  if is_whitelisted "$dir"; then
+    printf "  ${C_GRAY}[SKP] %-45s whitelisted${C_RESET}\n" "$label"
     return
   fi
+
   local size
   size=$(find "$dir" -mindepth 1 -maxdepth 1 -mtime +"$days" -exec du -sk {} + 2>/dev/null | awk '{s+=$1} END {print s+0}')
   if [[ "$size" -gt 0 ]]; then
     local mb=$((size / 1024))
     TOTAL_FREED=$((TOTAL_FREED + mb))
+    local human
+    human=$(format_size "$mb")
     if $DRY_RUN; then
-      printf "  [DRY] %-45s %6s MB (>%sd)\n" "$label" "$mb" "$days"
+      printf "  ${C_YELLOW}[DRY]${C_RESET} %-45s %10s (>%sd)\n" "$label" "$human" "$days"
     else
       find "$dir" -mindepth 1 -maxdepth 1 -mtime +"$days" -exec rm -rf {} +
-      printf "  [DEL] %-45s %6s MB (>%sd)\n" "$label" "$mb" "$days"
+      printf "  ${C_GREEN}[DEL]${C_RESET} %-45s %10s (>%sd)\n" "$label" "$human" "$days"
     fi
   fi
 }
@@ -168,47 +240,52 @@ scan_build_artifacts() {
 # =============================================================================
 
 echo ""
-echo "=== dev-clean ==="
-$DRY_RUN && echo "(dry-run mode — nothing will be deleted)"
+echo -e "${C_BOLD}=== dev-clean ===${C_RESET}"
+if $DRY_RUN; then
+  echo -e "${C_GRAY}(dry-run mode — nothing will be deleted)${C_RESET}"
+fi
+if [[ ${#WHITELIST[@]} -gt 0 ]]; then
+  echo -e "${C_GRAY}(${#WHITELIST[@]} whitelisted path(s) loaded)${C_RESET}"
+fi
 echo ""
 
 # --- Claude Code ---
-echo "[Claude Code]"
+echo -e "${C_BLUE}[Claude Code]${C_RESET}"
 delete_old_files "$HOME/.claude/debug" 1 "debug logs (1d+)"
 delete_old_files "$HOME/.claude/file-history" 14 "file-history (14d+)"
 delete_old_files "$HOME/.claude/projects" 14 "projects (14d+)"
 
 # --- Codex ---
-echo "[Codex]"
+echo -e "${C_BLUE}[Codex]${C_RESET}"
 delete_old_files "$HOME/.codex/sessions" 14 "sessions (14d+)"
 delete_old_files "$HOME/.codex/archived_sessions" 14 "archived_sessions (14d+)"
 delete_old_files "$HOME/.codex/log" 7 "logs (7d+)"
 freed "$HOME/.codex/worktrees" "worktrees"
 
 # --- Package managers ---
-echo "[Package Managers]"
+echo -e "${C_BLUE}[Package Managers]${C_RESET}"
 freed "$HOME/.npm/_cacache" "npm cache"
 freed "$HOME/.npm/_npx" "npx cache"
 freed "$HOME/.cache/uv" "uv (Python) cache"
 freed "$HOME/.bun/install/cache" "bun install cache"
 if ! $DRY_RUN; then
-  command -v pnpm &>/dev/null && _timeout 120 pnpm store prune 2>/dev/null && printf "  [RUN] %-45s done\n" "pnpm store prune"
-  command -v conda &>/dev/null && _timeout 120 conda clean --all -y 2>/dev/null | tail -1 && printf "  [RUN] %-45s done\n" "conda clean"
-  command -v brew &>/dev/null && _timeout 120 brew cleanup 2>/dev/null && printf "  [RUN] %-45s done\n" "brew cleanup"
+  command -v pnpm &>/dev/null && _timeout 120 pnpm store prune 2>/dev/null && printf "  ${C_GREEN}[RUN]${C_RESET} %-45s done\n" "pnpm store prune"
+  command -v conda &>/dev/null && _timeout 120 conda clean --all -y 2>/dev/null | tail -1 && printf "  ${C_GREEN}[RUN]${C_RESET} %-45s done\n" "conda clean"
+  command -v brew &>/dev/null && _timeout 120 brew cleanup 2>/dev/null && printf "  ${C_GREEN}[RUN]${C_RESET} %-45s done\n" "brew cleanup"
 else
-  command -v pnpm &>/dev/null && printf "  [DRY] %-45s (prune unused)\n" "pnpm store prune"
-  command -v conda &>/dev/null && printf "  [DRY] %-45s (tarballs+cache)\n" "conda clean --all"
-  command -v brew &>/dev/null && printf "  [DRY] %-45s (old versions)\n" "brew cleanup"
+  command -v pnpm &>/dev/null && printf "  ${C_YELLOW}[DRY]${C_RESET} %-45s ${C_GRAY}(prune unused)${C_RESET}\n" "pnpm store prune"
+  command -v conda &>/dev/null && printf "  ${C_YELLOW}[DRY]${C_RESET} %-45s ${C_GRAY}(tarballs+cache)${C_RESET}\n" "conda clean --all"
+  command -v brew &>/dev/null && printf "  ${C_YELLOW}[DRY]${C_RESET} %-45s ${C_GRAY}(old versions)${C_RESET}\n" "brew cleanup"
 fi
 
 # --- Build artifacts (scan all dev directories) ---
-echo "[Build Artifacts]"
+echo -e "${C_BLUE}[Build Artifacts]${C_RESET}"
 for dev_dir in "${DEV_DIRS[@]}"; do
   scan_build_artifacts "$dev_dir"
 done
 
 # --- Misc dev caches ---
-echo "[Misc]"
+echo -e "${C_BLUE}[Misc]${C_RESET}"
 freed "$HOME/.cache/puppeteer" "puppeteer browsers"
 freed "$HOME/.cursor/worktrees" "cursor worktrees"
 freed "$HOME/.local/share/opencode" "opencode data"
@@ -225,5 +302,6 @@ else
 fi
 
 echo ""
-echo "=== Total: ${TOTAL_FREED} MB ==="
+total_human=$(format_size "$TOTAL_FREED")
+echo -e "${C_BOLD}=== Total: ${total_human} ===${C_RESET}"
 echo ""
