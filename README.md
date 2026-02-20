@@ -107,13 +107,21 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.eyejoker.dev-clean.p
 
 ## Why
 
-Tools like `npx npkill` or macOS cleaners handle `node_modules` and system caches well. But the new wave of LLM-powered coding tools — Claude Code, Codex, Cursor — create their own sprawling caches that grow silently:
+Tools like [Mole](https://github.com/tw93/Mole), `npx npkill`, or macOS cleaners handle app caches, `node_modules`, and system junk well. Even Mole's dev cleanup covers npm/pip/cargo/Docker caches thoroughly.
 
-- `~/.claude/debug/` can accumulate hundreds of MB in days
-- `~/.codex/sessions/` keeps full conversation histories
-- Playwright/Puppeteer downloads can exceed 1 GB
+But none of them touch the **CLI-level caches** from LLM coding tools:
 
-dev-clean handles all of these in one pass, with sensible retention policies that preserve active sessions.
+| Path | Tool | What accumulates |
+|------|------|-----------------|
+| `~/.claude/debug/` | Claude Code | Debug logs — hundreds of MB in days |
+| `~/.claude/projects/` | Claude Code | Per-project session data |
+| `~/.codex/sessions/` | Codex | Full conversation histories |
+| `~/.codex/worktrees/` | Codex | Git worktree clones |
+| `~/.cursor/worktrees/` | Cursor | Git worktree clones |
+
+> **Note:** Mole cleans the Claude *desktop app* (Electron) rendering cache (`~/Library/Application Support/Claude/Cache`), which is different from the Claude Code *CLI* session data that dev-clean targets.
+
+dev-clean handles all of these in one pass, with sensible retention policies that preserve active sessions. It works alongside Mole or any other cleaner — not as a replacement.
 
 ## License
 

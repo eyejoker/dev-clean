@@ -105,13 +105,21 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.eyejoker.dev-clean.p
 
 ## 왜 만들었나
 
-`npx npkill`이나 macOS 클리너는 `node_modules`나 시스템 캐시를 잘 처리합니다. 하지만 LLM 코딩 도구들(Claude Code, Codex, Cursor)이 만드는 캐시는 아무도 건드리지 않습니다:
+[Mole](https://github.com/tw93/Mole), `npx npkill` 같은 도구는 앱 캐시, `node_modules`, 시스템 정크를 잘 처리합니다. Mole의 dev 정리도 npm/pip/cargo/Docker 캐시를 폭넓게 커버합니다.
 
-- `~/.claude/debug/`는 며칠 만에 수백 MB 쌓임
-- `~/.codex/sessions/`는 전체 대화 이력 보관
-- Playwright/Puppeteer 다운로드는 1 GB 초과 가능
+하지만 LLM 코딩 도구의 **CLI 레벨 캐시**는 아무도 건드리지 않습니다:
 
-dev-clean은 이 모든 것을 한 번에 정리하며, 활성 세션은 보존하는 합리적인 보존 정책을 적용합니다.
+| 경로 | 도구 | 쌓이는 것 |
+|------|------|----------|
+| `~/.claude/debug/` | Claude Code | 디버그 로그 — 며칠 만에 수백 MB |
+| `~/.claude/projects/` | Claude Code | 프로젝트별 세션 데이터 |
+| `~/.codex/sessions/` | Codex | 전체 대화 이력 |
+| `~/.codex/worktrees/` | Codex | Git worktree 복제본 |
+| `~/.cursor/worktrees/` | Cursor | Git worktree 복제본 |
+
+> **참고:** Mole이 정리하는 Claude 캐시는 *데스크톱 앱*(Electron)의 렌더링 캐시(`~/Library/Application Support/Claude/Cache`)이며, dev-clean이 정리하는 Claude Code *CLI* 세션 데이터와는 다릅니다.
+
+dev-clean은 이 모든 것을 한 번에 정리하며, 활성 세션은 보존하는 합리적인 보존 정책을 적용합니다. Mole 등 다른 클리너와 함께 사용할 수 있습니다 — 대체가 아닌 보완입니다.
 
 ## 라이선스
 
