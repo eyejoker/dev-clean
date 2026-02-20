@@ -40,8 +40,48 @@ fi
 # macOS launchd scheduling (optional)
 if [[ "$(uname -s)" == "Darwin" ]]; then
   echo ""
-  read -rp "Install weekly launchd schedule? (y/N) " answer
-  if [[ "$answer" =~ ^[Yy]$ ]]; then
+  echo "Schedule automatic cleanup? (macOS launchd)"
+  echo "  1) daily   — every day at 3:00 AM"
+  echo "  2) weekly  — every Sunday at 3:00 AM (recommended)"
+  echo "  3) monthly — 1st of each month at 3:00 AM"
+  echo "  4) skip"
+  echo ""
+  read -rp "Choose [1-4]: " schedule_choice
+
+  CALENDAR_INTERVAL=""
+  SCHEDULE_DESC=""
+  case "${schedule_choice:-4}" in
+    1)
+      CALENDAR_INTERVAL="    <key>Hour</key>
+    <integer>3</integer>
+    <key>Minute</key>
+    <integer>0</integer>"
+      SCHEDULE_DESC="every day at 3:00 AM"
+      ;;
+    2)
+      CALENDAR_INTERVAL="    <key>Weekday</key>
+    <integer>0</integer>
+    <key>Hour</key>
+    <integer>3</integer>
+    <key>Minute</key>
+    <integer>0</integer>"
+      SCHEDULE_DESC="every Sunday at 3:00 AM"
+      ;;
+    3)
+      CALENDAR_INTERVAL="    <key>Day</key>
+    <integer>1</integer>
+    <key>Hour</key>
+    <integer>3</integer>
+    <key>Minute</key>
+    <integer>0</integer>"
+      SCHEDULE_DESC="1st of each month at 3:00 AM"
+      ;;
+    *)
+      CALENDAR_INTERVAL=""
+      ;;
+  esac
+
+  if [[ -n "$CALENDAR_INTERVAL" ]]; then
     PLIST_DIR="$HOME/Library/LaunchAgents"
     PLIST_FILE="$PLIST_DIR/com.eyejoker.dev-clean.plist"
     mkdir -p "$PLIST_DIR"
@@ -60,12 +100,7 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   </array>
   <key>StartCalendarInterval</key>
   <dict>
-    <key>Weekday</key>
-    <integer>0</integer>
-    <key>Hour</key>
-    <integer>3</integer>
-    <key>Minute</key>
-    <integer>0</integer>
+${CALENDAR_INTERVAL}
   </dict>
   <key>StandardOutPath</key>
   <string>${HOME}/.local/share/dev-clean/last-run.log</string>
@@ -78,8 +113,9 @@ PLIST
     mkdir -p "$HOME/.local/share/dev-clean"
     launchctl bootout "gui/$(id -u)" "$PLIST_FILE" 2>/dev/null || true
     launchctl bootstrap "gui/$(id -u)" "$PLIST_FILE"
-    echo "Scheduled: every Sunday at 3:00 AM"
+    echo "Scheduled: $SCHEDULE_DESC"
     echo "Plist: $PLIST_FILE"
+    echo "Uninstall: dev-clean uninstall"
   fi
 fi
 

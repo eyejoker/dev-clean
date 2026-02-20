@@ -39,6 +39,15 @@ dev-clean
 
 # 실제 정리
 dev-clean --run
+
+# 도움말
+dev-clean --help
+
+# 버전 확인
+dev-clean --version
+
+# 제거 (스크립트, launchd 스케줄, 로그 모두 삭제)
+dev-clean uninstall
 ```
 
 출력 예시:
@@ -81,7 +90,7 @@ dev-clean --dry-run
 
 ### macOS (launchd)
 
-설치 스크립트에서 주 1회 자동 실행을 설정할 수 있습니다. 수동 설정:
+설치 스크립트에서 실행 주기를 선택할 수 있습니다 (매일 / 매주 / 매월). 수동 설정:
 
 ```bash
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.eyejoker.dev-clean.plist

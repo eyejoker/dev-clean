@@ -1,10 +1,65 @@
 #!/bin/bash
 # dev-clean: Clean LLM coding tool caches + dev build artifacts
 # https://github.com/eyejoker/dev-clean
-# Usage: dev-clean [--run]
-#   Default is dry-run (safe preview). Pass --run to actually delete.
 
 set -uo pipefail
+
+VERSION="1.0.0"
+PLIST_LABEL="com.eyejoker.dev-clean"
+PLIST_FILE="$HOME/Library/LaunchAgents/${PLIST_LABEL}.plist"
+
+show_help() {
+  cat <<'HELP'
+Usage: dev-clean [command]
+
+Commands:
+  (none)        Dry-run — preview what would be deleted (default)
+  --run         Actually delete caches and artifacts
+  --help        Show this help
+  --version     Show version
+  uninstall     Remove dev-clean, launchd schedule, and logs
+
+Environment:
+  DEV_CLEAN_DIRS  Colon-separated project directories to scan
+                  (default: ~/Developer:~/Projects:~/Documents/GitHub:~/src:~/repos:~/code)
+HELP
+  exit 0
+}
+
+do_uninstall() {
+  echo ""
+  echo "=== Uninstalling dev-clean ==="
+  echo ""
+
+  local script="$HOME/.local/bin/dev-clean"
+  if [[ -f "$script" ]]; then
+    rm -f "$script"
+    echo "Removed $script"
+  fi
+
+  if [[ "$(uname -s)" == "Darwin" ]] && [[ -f "$PLIST_FILE" ]]; then
+    launchctl bootout "gui/$(id -u)" "$PLIST_FILE" 2>/dev/null || true
+    rm -f "$PLIST_FILE"
+    echo "Removed launchd schedule"
+  fi
+
+  local data_dir="$HOME/.local/share/dev-clean"
+  if [[ -d "$data_dir" ]]; then
+    rm -rf "$data_dir"
+    echo "Removed $data_dir"
+  fi
+
+  echo ""
+  echo "Done."
+  echo ""
+  exit 0
+}
+
+case "${1:-}" in
+  --help|-h)  show_help ;;
+  --version)  echo "dev-clean $VERSION"; exit 0 ;;
+  uninstall)  do_uninstall ;;
+esac
 
 DRY_RUN=true
 [[ "${1:-}" == "--run" ]] && DRY_RUN=false

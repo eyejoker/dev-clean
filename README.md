@@ -39,6 +39,15 @@ dev-clean
 
 # Actually clean
 dev-clean --run
+
+# Show help
+dev-clean --help
+
+# Show version
+dev-clean --version
+
+# Uninstall (removes script, launchd schedule, and logs)
+dev-clean uninstall
 ```
 
 Example output:
@@ -81,7 +90,7 @@ dev-clean --dry-run
 
 ### macOS (launchd)
 
-The installer offers to set up a weekly schedule automatically. To do it manually:
+The installer lets you choose a schedule (daily / weekly / monthly). To do it manually:
 
 ```bash
 # install.sh creates this plist — or create your own:
